@@ -1,7 +1,7 @@
 from flask import Blueprint, request, session, current_app, url_for
 from flaskr import dao, mail
 from werkzeug.security import check_password_hash
-from functools import wraps
+from werkzeug.exceptions import abort
 import jwt
 import datetime
 import json
@@ -12,37 +12,15 @@ from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 
-def login_required(view):
-    @wraps(view)
-    def wrapped_view(**kwargs):
-        error = None
-        token = request.headers.get('x-access-token')
-        if token is None:
-            error = 'Token is missing.'
-        else:
-            if token != session.get('token'):
-                error = 'Wrong token.'
-            try:
-                jwt.decode(token, current_app.config['SECRET_KEY'])
-            except:
-                error = 'Token is invalid!'
-
-        if error is None:
-            return view(**kwargs)
-        return error
-
-    return wrapped_view
-
-
 @bp.route('/register', methods=('GET', 'POST'))
 def register():
     if request.method == 'POST':
         data = request.get_json()
-        fname = data['first_name']
-        lname = data['last_name']
-        email = data['email']
-        phone = data['phone']
-        password = data['password']
+        fname = data.get('first_name', None)
+        lname = data.get('last_name', None)
+        email = data.get('email', None)
+        phone = data.get('phone', None)
+        password = data.get('password', None)
 
         error = None
         if not fname:
@@ -59,7 +37,7 @@ def register():
             error = 'Phone {} has already registered.'.format(phone)
 
         if error:
-            return json.dumps({'status': error})
+            abort(403, error)
 
         msg = Message('Confirm Email', sender='fengchihao@gamil.com', recipients=[email])
         s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
@@ -70,7 +48,7 @@ def register():
         print('email sending...')
 
         dao.add_user(fname, lname, email, phone, password)
-        return json.dumps({'status': 'success'})
+        return 'success'
 
     return 'Register Page'
 
@@ -81,10 +59,10 @@ def confirm_email(token):
         s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
         email = s.loads(token, salt='email-confirm', max_age=3600)
     except SignatureExpired:
-        return 'The token is expired'
+        return abort(401, 'The token is expired')
     # set email to active
     dao.set_user_active_by_email(email)
-    return 'The token works'
+    return 'Your account is activated!'
 
 
 def validate(social_media_id, token):
@@ -104,7 +82,6 @@ def verify_fb():
         if request.data:
             try:
                 dd = request.get_json()
-                print(dd)
                 result = validate(dd['social_id'], dd['social_token'])
             except Exception as e:
                 print('Exception e = ', e)
@@ -117,13 +94,13 @@ def verify_fb():
                     user_id = dao.get_user_id_by_email(result['email'])
                 id = user_id['id']
                 token = jwt.encode(
-                    {'public_id': result['email'], 'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)},
+                    {'public_id': id, 'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)},
                     current_app.config['SECRET_KEY'])
                 session.clear()
                 session['user_id'] = id
                 session['token'] = token
                 return json.dumps({'token': token.decode('UTF-8')})
-            return json.dumps({'token': 'invalid'})
+            abort(401)
     return "verifyfb page"
 
 
@@ -131,8 +108,8 @@ def verify_fb():
 def login():
     if request.method == 'POST':
         data = request.get_json()
-        username = data['username']
-        password = data['password']
+        username = data.get('username', None)
+        password = data.get('password', None)
         user = dao.get_user_by_username(username)
 
         error = None
@@ -144,14 +121,14 @@ def login():
 
         if error is None:
             token = jwt.encode(
-                {'public_id': username, 'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)},
+                {'public_id': user['id'], 'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)},
                 current_app.config['SECRET_KEY'])
             session.clear()
             session['user_id'] = user['id']
             session['token'] = token
             return json.dumps({'token': token.decode("utf-8")})
 
-        return json.dumps({'token': error})
+        abort(401)
 
     return 'Login Page'
 
@@ -160,7 +137,7 @@ def login():
 def logout():
     print(session)
     session.clear()
-    return json.dumps({'status': 'success'})
+    return 'success'
 
 
 @bp.route('/verifytoken', methods=('GET', 'POST'))
