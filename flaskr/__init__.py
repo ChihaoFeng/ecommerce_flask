@@ -2,12 +2,14 @@ import os
 
 from flask import Flask
 from flask_mail import Mail
+from flask_cors import CORS
 
 mail = Mail()
 
 
 def create_app(test_config=None):
     application = Flask(__name__, instance_relative_config=True)
+    cors = CORS(application)
     # application.config.from_mapping(
     #     SECRET_KEY='ecommerce',
     #     DATABASE=os.path.join(application.instance_path, 'flaskr.sqlite'),
