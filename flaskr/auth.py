@@ -113,7 +113,7 @@ def login():
         user = dao.get_user_by_username(username)
 
         error = None
-        if user is None or not check_password_hash(user['password'], password):
+        if not username or user is None or not check_password_hash(user['password'], password):
             error = 'Incorrect username or password.'
 
         if user['status'] != 'active':
